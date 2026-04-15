@@ -1,0 +1,32 @@
+{
+  "name": "elysia-graceful-shutdown",
+  "version": "0.0.1",
+  "author": "naviary-sanctuary",
+  "homepage": "https://github.com/Naviary-Sanctuary/elysia-graceful-shutdown#readme",
+  "bugs": {
+    "url": "https://github.com/Naviary-Sanctuary/elysia-graceful-shutdown/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Naviary-Sanctuary/elysia-graceful-shutdown.git"
+  },
+  "module": "index.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "oxlint . --deny-warnings",
+    "fmt": "oxfmt --config .oxfmt.json .",
+    "fmt:check": "oxfmt --check --config .oxfmt.json .",
+    "hooks:install": "lefthook install",
+    "test": "bun test --pass-with-no-tests"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.45.0",
+    "oxlint": "^1.60.0",
+    "lefthook": "^2.1.5",
+    "@types/bun": "^1.3.12",
+    "typescript": "^6.0.2"
+  }
+}

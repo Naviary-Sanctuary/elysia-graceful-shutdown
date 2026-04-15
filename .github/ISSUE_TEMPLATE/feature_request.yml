@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an improvement for elysia-graceful-shutdown.
+title: '[Feature]: '
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What limitation are you running into?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the API or behavior you want.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This request is still centered on a lightweight Stage 3 decorator DI library.
+          required: true
+        - label: This request does not require framework-specific behavior in the base package.
+          required: true

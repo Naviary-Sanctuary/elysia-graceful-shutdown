@@ -44,11 +44,6 @@ export type GracefulShutdownContext = {
   reason: GracefulShutdownReason;
 
   /**
-   * Indicates whether the shutdown flow exceeded the configured timeout.
-   */
-  timedOut: boolean;
-
-  /**
    * Unix timestamp in milliseconds for when shutdown started.
    */
   startedAt: number;
@@ -94,17 +89,6 @@ export type GracefulShutdownOptions = {
   onError?: (context: GracefulShutdownErrorContext) => void;
 
   /**
-   * Maximum time to wait for tracked in-flight work to drain, in milliseconds.
-   *
-   * This timeout applies only to waiting for active work tracked by the plugin.
-   * After the timeout expires, `timedOut` becomes `true` and the shutdown hooks
-   * continue running.
-   *
-   * @default 30_000
-   */
-  timeout?: number;
-
-  /**
    * Hook that runs at the beginning of the shutdown flow.
    *
    * @example
@@ -139,9 +123,9 @@ export type GracefulShutdownOptions = {
    * @example
    *
    * gracefulShutdown({
-   *   finally: async ({ timedOut, signal }) => {
+   *   finally: async ({ signal, state }) => {
    *     console.log('Shutdown finished');
-   *     console.log('Shutdown timed out: ', timedOut);
+   *     console.log('Shutdown state: ', state);
    *     console.log('Shutdown Signal: ', signal);
    *   },
    * })

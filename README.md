@@ -8,7 +8,6 @@ It provides:
 
 - signal handling
 - shutdown lifecycle hooks
-- timeout-based shutdown flow
 
 ## Table of Contents
 
@@ -17,7 +16,6 @@ It provides:
 - [Shutdown Flow](#shutdown-flow)
 - [Options](#options)
   - [`signals`](#signals)
-  - [`timeout`](#timeout)
   - [`preShutdown(context)`](#preshutdowncontext)
   - [`onShutdown(context)`](#onshutdowncontext)
   - [`onError(context)`](#onerrorcontext)
@@ -39,15 +37,14 @@ const app = new Elysia()
   .use(
     gracefulShutdown({
       signals: ['SIGTERM', 'SIGINT'],
-      timeout: 30_000,
       preShutdown: () => {
         console.log('shutdown begin');
       },
       onShutdown: async () => {
         await db.destroy();
       },
-      finally: async ({ timedOut, signal }) => {
-        console.log('shutdown finished', { timedOut, signal });
+      finally: async ({ signal, state }) => {
+        console.log('shutdown finished', { signal, state });
       },
     }),
   )
@@ -80,12 +77,10 @@ sequenceDiagram
     C->>S: Request during shutdown
     S-->>C: Rejected / unavailable
 
-    Note over S: (5) wait for active work to complete
+    S->>S: (5) onShutdown()
+    S->>S: (6) finally()
 
-    S->>S: (6) onShutdown()
-    S->>S: (7) finally()
-
-    Note over S: (8) process terminates naturally
+    Note over S: (7) process terminates naturally
 ```
 
 ## Options
@@ -100,24 +95,6 @@ Deafult:
 ['SIGTERM', 'SIGINT'];
 ```
 
-### `timeout`
-
-Maximum time to wait for tracked in-flight work to drain, in milliseconds.
-
-This timeout only applies to the active request/work draining step.
-
-If the timeout is reached:
-
-- `timedOut` becomes `true`
-- the plugin stops waiting for active work to finish
-- `onShutdown(context)` and `finally(context)` still run
-
-Default:
-
-```typescript
-30_000; // 30 seconds
-```
-
 ### `preShutdown(context)`
 
 Runs at the beginning of the shutdown flow.
@@ -128,7 +105,7 @@ Examples:
 
 - marming internal state as shutting down
 - stopping schedulers
-- preparing the app for connection draining
+- preparing the app for shutdown
 - loggin shutdown start
 
 ```typescript
@@ -196,14 +173,12 @@ Use this for short final work such as:
 - metrics markers
 - lightweight finalization
 
-This hook may run whether shutdown completed normally or timed out.
-
 ```typescript
 new Elysia().use(
   gracefulShutdown({
-    finally: async ({ timedOut, signal }) => {
+    finally: async ({ signal, state }) => {
       console.log('Shutdown finished');
-      console.log('Shutdown timed out: ', timedOut);
+      console.log('Shutdown state: ', state);
       console.log('Shutdown Signal: ', signal);
     },
   }),

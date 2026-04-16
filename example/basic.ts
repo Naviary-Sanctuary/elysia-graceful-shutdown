@@ -14,7 +14,6 @@ const app = new Elysia()
   .use(
     gracefulShutdown({
       signals: ['SIGINT', 'SIGTERM'],
-      timeout: 10_000,
       preShutdown: ({ signal }) => {
         console.log(`shutdown started by ${signal ?? 'manual trigger'}`);
       },
@@ -22,8 +21,8 @@ const app = new Elysia()
         console.log(`running cleanup for ${reason}`);
         await closeConnections();
       },
-      finally: ({ timedOut, state }) => {
-        console.log('shutdown finished', { timedOut, state });
+      finally: ({ state }) => {
+        console.log('shutdown finished', { state });
       },
     }),
   )

@@ -15,19 +15,18 @@ describe('shutdown', () => {
           preShutdown: ({ reason, state }) => {
             calls.push(`pre:${reason}:${state}`);
           },
-          onShutdown: ({ timedOut, state }) => {
-            calls.push(`on:${timedOut}:${state}`);
+          onShutdown: ({ state }) => {
+            calls.push(`on:${state}`);
           },
-          finally: ({ timedOut, state }) => {
-            calls.push(`finally:${timedOut}:${state}`);
+          finally: ({ state }) => {
+            calls.push(`finally:${state}`);
           },
         },
       });
 
-      expect(calls).toEqual(['pre:manual:shutting_down', 'on:false:shutting_down', 'finally:false:completed']);
+      expect(calls).toEqual(['pre:manual:shutting_down', 'on:shutting_down', 'finally:completed']);
       expect(store.state).toBe('completed');
       expect(store.reason).toBe('manual');
-      expect(store.timedOut).toBe(false);
     });
 
     test('does not run twice after shutdown has already started', async () => {
@@ -109,33 +108,6 @@ describe('shutdown', () => {
 
       expect(calls).toEqual(['onShutdown', 'finally:completed']);
       expect(store.state).toBe('completed');
-    });
-
-    describe('when active work exceeds the timeout', () => {
-      test('preserves the original reason and marks timedOut', async () => {
-        const store = new GracefulShutdownStore();
-        let observedReason: 'signal' | 'manual' = 'manual';
-        let observedTimedOut = false;
-
-        store.startWork();
-
-        await shutdown({
-          store,
-          reason: 'manual',
-          options: {
-            timeout: 10,
-            onShutdown: ({ reason, timedOut }) => {
-              observedReason = reason;
-              observedTimedOut = timedOut;
-            },
-          },
-        });
-
-        expect(store.reason).toBe('manual');
-        expect(store.timedOut).toBe(true);
-        expect(observedReason).toBe('manual');
-        expect(observedTimedOut).toBe(true);
-      });
     });
   });
 });

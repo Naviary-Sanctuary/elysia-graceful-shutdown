@@ -2,8 +2,6 @@ import { Elysia } from 'elysia';
 import type { GracefulShutdownOptions, GracefulShutdownReason, Signal } from './types';
 import { GracefulShutdownStore, shutdown } from './core';
 
-const WORK_STARTED = Symbol('graceful-shutdown-work-started');
-
 export function gracefulShutdown(options: GracefulShutdownOptions = {}) {
   const store = new GracefulShutdownStore();
   const signals = options.signals ?? ['SIGTERM', 'SIGINT'];
@@ -69,22 +67,6 @@ export function gracefulShutdown(options: GracefulShutdownOptions = {}) {
       if (store.state !== 'idle') {
         context.set.status = 503;
         return 'Service Unavailable';
-      }
-
-      (context as Record<symbol, boolean>)[WORK_STARTED] = true;
-
-      store.startWork();
-    })
-    .onAfterResponse((context) => {
-      if ((context as Record<symbol, boolean>)[WORK_STARTED]) {
-        store.finishWork();
-        (context as Record<symbol, boolean>)[WORK_STARTED] = false;
-      }
-    })
-    .onError((context) => {
-      if ((context as Record<symbol, boolean>)[WORK_STARTED]) {
-        store.finishWork();
-        (context as Record<symbol, boolean>)[WORK_STARTED] = false;
       }
     });
 }

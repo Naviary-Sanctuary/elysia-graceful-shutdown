@@ -22,6 +22,9 @@
     "hooks:install": "lefthook install",
     "test": "bun test --pass-with-no-tests"
   },
+  "dependencies": {
+    "elysia": "^1.4.28"
+  },
   "devDependencies": {
     "oxfmt": "^0.45.0",
     "oxlint": "^1.60.0",

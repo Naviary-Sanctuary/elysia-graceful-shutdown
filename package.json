@@ -11,7 +11,21 @@
     "type": "git",
     "url": "git+https://github.com/Naviary-Sanctuary/elysia-graceful-shutdown.git"
   },
-  "module": "index.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

@@ -55,6 +55,26 @@ export type GracefulShutdownContext = {
 };
 
 /**
+ * Error details emitted when the plugin encounters a shutdown failure.
+ */
+export type GracefulShutdownErrorContext = {
+  /**
+   * Phase where the failure happened.
+   */
+  phase: 'shutdown' | 'stop';
+
+  /**
+   * The original failure value.
+   */
+  error: unknown;
+
+  /**
+   * The signal that triggered shutdown, if any.
+   */
+  signal?: Signal;
+};
+
+/**
  * Options for configuring the graceful shutdown plugin.
  */
 export type GracefulShutdownOptions = {
@@ -66,7 +86,19 @@ export type GracefulShutdownOptions = {
   signals?: Signal[];
 
   /**
-   * Maximum time allowed for the overall shutdown flow, in milliseconds.
+   * Called when the plugin catches an error during signal-driven shutdown.
+   *
+   * This lets the host application decide how shutdown failures should be
+   * reported instead of the plugin writing directly to stdout/stderr.
+   */
+  onError?: (context: GracefulShutdownErrorContext) => void;
+
+  /**
+   * Maximum time to wait for tracked in-flight work to drain, in milliseconds.
+   *
+   * This timeout applies only to waiting for active work tracked by the plugin.
+   * After the timeout expires, `timedOut` becomes `true` and the shutdown hooks
+   * continue running.
    *
    * @default 30_000
    */

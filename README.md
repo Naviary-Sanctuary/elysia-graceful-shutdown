@@ -20,6 +20,7 @@ It provides:
   - [`timeout`](#timeout)
   - [`preShutdown(context)`](#preshutdowncontext)
   - [`onShutdown(context)`](#onshutdowncontext)
+  - [`onError(context)`](#onerrorcontext)
   - [`finally(context)`](#finallycontext)
 
 ## Installation
@@ -101,7 +102,15 @@ Deafult:
 
 ### `timeout`
 
-Maximum time allowed for the shutdown flow, in milliseconds
+Maximum time to wait for tracked in-flight work to drain, in milliseconds.
+
+This timeout only applies to the active request/work draining step.
+
+If the timeout is reached:
+
+- `timedOut` becomes `true`
+- the plugin stops waiting for active work to finish
+- `onShutdown(context)` and `finally(context)` still run
 
 Default:
 
@@ -151,6 +160,27 @@ new Elysia().use(
       console.log('Clean up');
       await datasource.destroy();
       await eventStore.end();
+    },
+  }),
+);
+```
+
+### `onError(context)`
+
+Runs when the plugin catches an error during signal-driven shutdown.
+
+Use this to forward shutdown failures to your application's logger or
+observability pipeline instead of letting the plugin write directly to stderr.
+
+```typescript
+new Elysia().use(
+  gracefulShutdown({
+    onError: ({ phase, error, signal }) => {
+      logger.error('graceful shutdown failed', {
+        phase,
+        signal,
+        error,
+      });
     },
   }),
 );

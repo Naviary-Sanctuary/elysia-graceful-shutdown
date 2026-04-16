@@ -9,6 +9,14 @@ export function gracefulShutdown(options: GracefulShutdownOptions = {}) {
   const signals = options.signals ?? ['SIGTERM', 'SIGINT'];
   const signalHandlers = new Map<Signal, () => void>();
 
+  const reportError = ({ phase, error, signal }: { phase: 'shutdown' | 'stop'; error: unknown; signal?: Signal }) => {
+    try {
+      options.onError?.({ phase, error, signal });
+    } catch {
+      // Error reporting must never break the fail-safe shutdown path.
+    }
+  };
+
   return new Elysia({
     name: 'graceful-shutdown',
   })
@@ -26,14 +34,25 @@ export function gracefulShutdown(options: GracefulShutdownOptions = {}) {
     })
     .onStart((app) => {
       for (const signal of signals) {
-        const handler = async () => {
-          await shutdown({
-            store,
-            options,
-            reason: 'signal',
-            signal,
-          });
-          await app.stop();
+        const handler = () => {
+          void (async () => {
+            try {
+              await shutdown({
+                store,
+                options,
+                reason: 'signal',
+                signal,
+              });
+            } catch (error) {
+              reportError({ phase: 'shutdown', error, signal });
+            } finally {
+              try {
+                await app.stop();
+              } catch (error) {
+                reportError({ phase: 'stop', error, signal });
+              }
+            }
+          })();
         };
 
         signalHandlers.set(signal, handler);
@@ -47,7 +66,7 @@ export function gracefulShutdown(options: GracefulShutdownOptions = {}) {
       signalHandlers.clear();
     })
     .onRequest((context) => {
-      if (store.state === 'shutting_down') {
+      if (store.state !== 'idle') {
         context.set.status = 503;
         return 'Service Unavailable';
       }

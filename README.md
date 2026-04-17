@@ -8,6 +8,7 @@ It provides:
 
 - signal handling
 - shutdown lifecycle hooks
+- in-flight request draining before cleanup
 
 ## Table of Contents
 
@@ -37,14 +38,15 @@ const app = new Elysia()
   .use(
     gracefulShutdown({
       signals: ['SIGTERM', 'SIGINT'],
-      preShutdown: () => {
-        console.log('shutdown begin');
+      preShutdown: ({ activeRequestCount }) => {
+        console.log('shutdown begin', { activeRequestCount });
       },
-      onShutdown: async () => {
+      onShutdown: async ({ activeRequestCount }) => {
+        console.log('all in-flight requests finished', { activeRequestCount });
         await db.destroy();
       },
-      finally: async ({ signal, state }) => {
-        console.log('shutdown finished', { signal, state });
+      finally: async ({ signal, state, activeRequestCount }) => {
+        console.log('shutdown finished', { signal, state, activeRequestCount });
       },
     }),
   )
@@ -70,18 +72,25 @@ sequenceDiagram
     Note over S: shutdown initiated
 
     S->>S: (3) preShutdown()
+    Note over S: state changes to shutting_down
 
-    Note over S: (4) begin shutdown flow
-    Note over S: stop accepting new incoming work
+    Note over S: (4) reject new incoming requests
 
     C->>S: Request during shutdown
     S-->>C: Rejected / unavailable
 
-    S->>S: (5) onShutdown()
-    S->>S: (6) finally()
+    Note over S: (5) wait for in-flight requests to finish
 
-    Note over S: (7) process terminates naturally
+    S->>S: (6) onShutdown()
+    S->>S: (7) finally()
+
+    Note over S: (8) process terminates naturally
 ```
+
+The shutdown hooks receive `activeRequestCount`, which reflects the number of
+tracked in-flight HTTP requests at that phase of the shutdown flow.
+
+For a runnable demo, see `example/request-drain.ts`.
 
 ## Options
 
@@ -99,7 +108,8 @@ Deafult:
 
 Runs at the beginning of the shutdown flow.
 
-Use this when you need to perform very early shutdown work before the main cleanup phase.
+Use this when you need to perform very early shutdown work before the plugin
+waits for tracked in-flight requests to drain and before the main cleanup phase.
 
 Examples:
 
@@ -121,7 +131,8 @@ new Elysia().use(
 
 ### `onShutdown(context)`
 
-Runs during the main cleanup phase.
+Runs during the main cleanup phase, after tracked in-flight requests have
+finished.
 
 Use this for resource cleanup such as:
 

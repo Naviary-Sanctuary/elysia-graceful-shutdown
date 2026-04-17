@@ -19,6 +19,8 @@ export async function shutdown({
   try {
     await options.preShutdown?.(store.toContext());
 
+    await store.wait();
+
     await options.onShutdown?.(store.toContext());
   } finally {
     store.complete();

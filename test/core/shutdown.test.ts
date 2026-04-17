@@ -29,6 +29,37 @@ describe('shutdown', () => {
       expect(store.reason).toBe('manual');
     });
 
+    test('waits for active requests to drain before onShutdown', async () => {
+      const store = new GracefulShutdownStore();
+      const calls: string[] = [];
+
+      const token = store.startRequest();
+
+      const shutdownPromise = shutdown({
+        store,
+        reason: 'manual',
+        options: {
+          preShutdown: ({ activeRequestCount }) => {
+            calls.push(`pre:${activeRequestCount}`);
+          },
+          onShutdown: ({ activeRequestCount }) => {
+            calls.push(`on:${activeRequestCount}`);
+          },
+          finally: ({ activeRequestCount }) => {
+            calls.push(`finally:${activeRequestCount}`);
+          },
+        },
+      });
+
+      await Promise.resolve();
+      calls.push('draining');
+      store.finishRequest(token);
+
+      await shutdownPromise;
+
+      expect(calls).toEqual(['pre:1', 'draining', 'on:0', 'finally:0']);
+    });
+
     test('does not run twice after shutdown has already started', async () => {
       const store = new GracefulShutdownStore();
       let onShutdownCalls = 0;

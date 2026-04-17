@@ -14,4 +14,32 @@ describe('GracefulShutdownStore', () => {
       expect(typeof store.startedAt).toBe('number');
     });
   });
+
+  describe('request tracking', () => {
+    test('tracks each token once and resolves when active requests drain', async () => {
+      const store = new GracefulShutdownStore();
+      const idlePromise = store.waitForActiveRequests();
+      const token = store.startRequest();
+
+      expect(token).toBe(1);
+      expect(store.activeRequestCount).toBe(1);
+
+      let resolved = false;
+      const drainingPromise = store.waitForActiveRequests().then(() => {
+        resolved = true;
+      });
+
+      await Promise.resolve();
+      expect(resolved).toBe(false);
+
+      expect(store.finishRequest(token)).toBe(true);
+      expect(store.finishRequest(token)).toBe(false);
+      expect(store.finishRequest()).toBe(false);
+      expect(store.activeRequestCount).toBe(0);
+
+      await idlePromise;
+      await drainingPromise;
+      expect(resolved).toBe(true);
+    });
+  });
 });

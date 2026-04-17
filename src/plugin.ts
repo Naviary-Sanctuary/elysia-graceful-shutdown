@@ -2,6 +2,12 @@ import { Elysia } from 'elysia';
 import type { GracefulShutdownOptions, GracefulShutdownReason, Signal } from './types';
 import { GracefulShutdownStore, shutdown } from './core';
 
+const requestTokenKey = Symbol('gracefulShutdownRequestToken');
+
+type RequestTrackingContext = {
+  [requestTokenKey]?: number;
+};
+
 export function gracefulShutdown(options: GracefulShutdownOptions = {}) {
   const store = new GracefulShutdownStore();
   const signals = options.signals ?? ['SIGTERM', 'SIGINT'];
@@ -68,5 +74,15 @@ export function gracefulShutdown(options: GracefulShutdownOptions = {}) {
         context.set.status = 503;
         return 'Service Unavailable';
       }
+
+      const trackedContext = context as RequestTrackingContext;
+
+      if (trackedContext[requestTokenKey] !== undefined) return;
+
+      const token = store.startRequest();
+      trackedContext[requestTokenKey] = token;
+    })
+    .onAfterResponse({ as: 'scoped' }, (context) => {
+      store.finishRequest((context as RequestTrackingContext)[requestTokenKey]);
     });
 }

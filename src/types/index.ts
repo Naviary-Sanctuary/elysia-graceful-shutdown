@@ -47,6 +47,11 @@ export type GracefulShutdownContext = {
    * Unix timestamp in milliseconds for when shutdown started.
    */
   startedAt: number;
+
+  /**
+   * Number of in-flight HTTP requests currently being tracked.
+   */
+  activeRequestCount: number;
 };
 
 /**

@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { Elysia } from 'elysia';
 import { gracefulShutdown } from '../src/plugin';
 
 function getHook<T>(hook: T | undefined, name: string): T {
@@ -32,12 +33,55 @@ describe('gracefulShutdown', () => {
   });
 
   describe('request lifecycle', () => {
+    test('exports afterResponse to parent routes when used as a plugin', () => {
+      const plugin = gracefulShutdown();
+      const app = new Elysia().use(plugin).get('/', () => 'ok');
+
+      expect(plugin.event.afterResponse).toHaveLength(1);
+      expect(app.event.request).toHaveLength(1);
+      expect(app.event.afterResponse).toHaveLength(1);
+    });
+
+    test('tracks accepted requests until afterResponse completes', () => {
+      const plugin = gracefulShutdown();
+      const gracefulShutdownDecorator = plugin.decorator.gracefulShutdown;
+      const requestHook = getHook(plugin.event.request?.[0], 'request');
+      const afterResponseHook = getHook(plugin.event.afterResponse?.[0], 'afterResponse');
+      const request = new Request('http://localhost/accepted');
+      const context = {
+        request,
+        responseValue: undefined,
+        response: undefined,
+        set: {},
+      } as { request: Request; responseValue: unknown; response: unknown; set: { status?: number } };
+      const differentAfterResponseContext = {
+        request: new Request('http://localhost/accepted'),
+        responseValue: undefined,
+        response: undefined,
+        set: {},
+      } as { request: Request; responseValue: unknown; response: unknown; set: { status?: number } };
+
+      requestHook.fn(context);
+      requestHook.fn(context);
+
+      expect(gracefulShutdownDecorator.store.activeRequestCount).toBe(1);
+
+      afterResponseHook.fn(differentAfterResponseContext);
+      expect(gracefulShutdownDecorator.store.activeRequestCount).toBe(1);
+
+      afterResponseHook.fn(context);
+      afterResponseHook.fn(context);
+
+      expect(gracefulShutdownDecorator.store.activeRequestCount).toBe(0);
+    });
+
     test('rejects requests with 503 while shutdown is in progress', () => {
       const plugin = gracefulShutdown();
       const gracefulShutdownDecorator = plugin.decorator.gracefulShutdown;
       const context = {
+        request: new Request('http://localhost/rejected-during-shutdown'),
         set: {},
-      } as { set: { status?: number } };
+      } as { request: Request; set: { status?: number } };
       const requestHook = getHook(plugin.event.request?.[0], 'request');
 
       gracefulShutdownDecorator.store.begin({ reason: 'manual' });
@@ -46,14 +90,16 @@ describe('gracefulShutdown', () => {
 
       expect(context.set.status).toBe(503);
       expect(response).toBe('Service Unavailable');
+      expect(gracefulShutdownDecorator.store.activeRequestCount).toBe(0);
     });
 
     test('rejects requests with 503 after shutdown has completed', () => {
       const plugin = gracefulShutdown();
       const gracefulShutdownDecorator = plugin.decorator.gracefulShutdown;
       const context = {
+        request: new Request('http://localhost/rejected-after-shutdown'),
         set: {},
-      } as { set: { status?: number } };
+      } as { request: Request; set: { status?: number } };
       const requestHook = getHook(plugin.event.request?.[0], 'request');
 
       gracefulShutdownDecorator.store.complete();
@@ -62,6 +108,7 @@ describe('gracefulShutdown', () => {
 
       expect(context.set.status).toBe(503);
       expect(response).toBe('Service Unavailable');
+      expect(gracefulShutdownDecorator.store.activeRequestCount).toBe(0);
     });
   });
 

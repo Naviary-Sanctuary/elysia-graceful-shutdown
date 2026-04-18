@@ -59,7 +59,7 @@ export class GracefulShutdownStore {
     return true;
   }
 
-  wait() {
+  waitActivatedRequest() {
     if (this.activeRequestCount === 0) return Promise.resolve();
 
     return new Promise<void>((resolve) => {

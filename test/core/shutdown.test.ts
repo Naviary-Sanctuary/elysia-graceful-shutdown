@@ -60,6 +60,34 @@ describe('shutdown', () => {
       expect(calls).toEqual(['pre:1', 'draining', 'on:0', 'finally:0']);
     });
 
+    test('continues shutdown after the drain timeout expires', async () => {
+      const store = new GracefulShutdownStore();
+      const calls: string[] = [];
+
+      store.startRequest();
+
+      await shutdown({
+        store,
+        reason: 'manual',
+        options: {
+          drainTimeout: 10,
+          preShutdown: ({ activeRequestCount }) => {
+            calls.push(`pre:${activeRequestCount}`);
+          },
+          onShutdown: ({ activeRequestCount }) => {
+            calls.push(`on:${activeRequestCount}`);
+          },
+          finally: ({ activeRequestCount }) => {
+            calls.push(`finally:${activeRequestCount}`);
+          },
+        },
+      });
+
+      expect(calls).toEqual(['pre:1', 'on:1', 'finally:1']);
+      expect(store.state).toBe('completed');
+      expect(store.activeRequestCount).toBe(1);
+    });
+
     test('does not run twice after shutdown has already started', async () => {
       const store = new GracefulShutdownStore();
       let onShutdownCalls = 0;

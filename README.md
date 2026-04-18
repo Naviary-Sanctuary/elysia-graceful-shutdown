@@ -17,6 +17,7 @@ It provides:
 - [Shutdown Flow](#shutdown-flow)
 - [Options](#options)
   - [`signals`](#signals)
+  - [`drainTimeout`](#draintimeout)
   - [`preShutdown(context)`](#preshutdowncontext)
   - [`onShutdown(context)`](#onshutdowncontext)
   - [`onError(context)`](#onerrorcontext)
@@ -38,6 +39,7 @@ const app = new Elysia()
   .use(
     gracefulShutdown({
       signals: ['SIGTERM', 'SIGINT'],
+      drainTimeout: 10000,
       preShutdown: ({ activeRequestCount }) => {
         console.log('shutdown begin', { activeRequestCount });
       },
@@ -80,6 +82,7 @@ sequenceDiagram
     S-->>C: Rejected / unavailable
 
     Note over S: (5) wait for in-flight requests to finish
+    Note over S: continue after drainTimeout if requests are still running
 
     S->>S: (6) onShutdown()
     S->>S: (7) finally()
@@ -90,7 +93,7 @@ sequenceDiagram
 The shutdown hooks receive `activeRequestCount`, which reflects the number of
 tracked in-flight HTTP requests at that phase of the shutdown flow.
 
-For a runnable demo, see `example/request-drain.ts`.
+For runnable demos, see `example/request-drain.ts` and `example/request-timeout.ts`.
 
 ## Options
 
@@ -102,6 +105,27 @@ Deafult:
 
 ```typescript
 ['SIGTERM', 'SIGINT'];
+```
+
+### `drainTimeout`
+
+Maximum time to wait for tracked in-flight HTTP requests to drain before the
+shutdown flow continues.
+
+Value is in milliseconds.
+
+Default:
+
+```typescript
+30_000; // 30 seconds
+```
+
+```typescript
+new Elysia().use(
+  gracefulShutdown({
+    drainTimeout: 30_000,
+  }),
+);
 ```
 
 ### `preShutdown(context)`
@@ -132,7 +156,7 @@ new Elysia().use(
 ### `onShutdown(context)`
 
 Runs during the main cleanup phase, after tracked in-flight requests have
-finished.
+finished or after the configured `drainTimeout` has elapsed.
 
 Use this for resource cleanup such as:
 

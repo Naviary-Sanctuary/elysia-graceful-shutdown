@@ -86,6 +86,16 @@ export type GracefulShutdownOptions = {
   signals?: Signal[];
 
   /**
+   * Maximum time to wait for tracked in-flight HTTP requests to drain before
+   * moving on to the cleanup phase.
+   *
+   * Value is in milliseconds.
+   *
+   * @default 30000
+   */
+  drainTimeout?: number;
+
+  /**
    * Called when the plugin catches an error during signal-driven shutdown.
    *
    * This lets the host application decide how shutdown failures should be

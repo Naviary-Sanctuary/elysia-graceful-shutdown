@@ -18,14 +18,14 @@ describe('GracefulShutdownStore', () => {
   describe('request tracking', () => {
     test('tracks each token once and resolves when active requests drain', async () => {
       const store = new GracefulShutdownStore();
-      const idlePromise = store.waitForActiveRequests();
+      const idlePromise = store.wait();
       const token = store.startRequest();
 
       expect(token).toBe(1);
       expect(store.activeRequestCount).toBe(1);
 
       let resolved = false;
-      const drainingPromise = store.waitForActiveRequests().then(() => {
+      const drainingPromise = store.wait().then(() => {
         resolved = true;
       });
 

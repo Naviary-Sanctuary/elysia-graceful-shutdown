@@ -25,11 +25,13 @@ export async function shutdown({
   options,
   reason,
   signal,
+  finalize = true,
 }: {
   store: GracefulShutdownStore;
   options: GracefulShutdownOptions;
   reason: GracefulShutdownReason;
   signal?: Signal;
+  finalize?: boolean;
 }) {
   if (!store.canStart()) return;
 
@@ -42,8 +44,10 @@ export async function shutdown({
 
     await options.onShutdown?.(store.toContext());
   } finally {
-    store.complete();
+    if (finalize) {
+      store.complete();
 
-    await options.finally?.(store.toContext());
+      await options.finally?.(store.toContext());
+    }
   }
 }

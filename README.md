@@ -17,6 +17,7 @@ It provides:
 - [Shutdown Flow](#shutdown-flow)
 - [Options](#options)
   - [`signals`](#signals)
+  - [`timeout`](#timeout)
   - [`drainTimeout`](#draintimeout)
   - [`preShutdown(context)`](#preshutdowncontext)
   - [`onShutdown(context)`](#onshutdowncontext)
@@ -39,7 +40,8 @@ const app = new Elysia()
   .use(
     gracefulShutdown({
       signals: ['SIGTERM', 'SIGINT'],
-      drainTimeout: 10000,
+      timeout: 30_000,
+      drainTimeout: 10_000,
       preShutdown: ({ activeRequestCount }) => {
         console.log('shutdown begin', { activeRequestCount });
       },
@@ -85,9 +87,11 @@ sequenceDiagram
     Note over S: continue after drainTimeout if requests are still running
 
     S->>S: (6) onShutdown()
-    S->>S: (7) finally()
+    S->>S: (7) app.stop()
+    Note over S: force app.stop(true) after timeout
+    S->>S: (8) finally()
 
-    Note over S: (8) process terminates naturally
+    Note over S: (9) process terminates naturally
 ```
 
 The shutdown hooks receive `activeRequestCount`, which reflects the number of
@@ -107,10 +111,73 @@ Deafult:
 ['SIGTERM', 'SIGINT'];
 ```
 
+### `timeout`
+
+Maximum time to allow the whole signal-driven shutdown flow to finish before
+the plugin force-stops the app with `app.stop(true)`.
+
+This is a shutdown deadline for the server lifecycle, not a guarantee that all
+already-running user-land work will be interrupted.
+
+This timeout covers:
+
+- `preShutdown(context)`
+- request draining
+- `onShutdown(context)`
+- `app.stop()`
+
+Value is in milliseconds.
+
+Default:
+
+```typescript
+30_000; // 30 seconds
+```
+
+```typescript
+new Elysia().use(
+  gracefulShutdown({
+    timeout: 30_000,
+  }),
+);
+```
+
+What this option guarantees:
+
+- the plugin stops accepting new work through the normal shutdown flow
+- the plugin escalates from `app.stop()` to `app.stop(true)` when the deadline is exceeded
+- active connections are force-terminated at the Bun server level
+
+What this option does not guarantee:
+
+- arbitrary user-land handler code is preempted immediately
+- long-running async work such as `sleep()`, database calls, or external API work is cancelled automatically
+
+On Bun, `app.stop(true)` immediately terminates active connections, but a
+long-running async handler may still finish its own work after the client
+connection has been closed.
+
 ### `drainTimeout`
 
 Maximum time to wait for tracked in-flight HTTP requests to drain before the
 shutdown flow continues.
+
+This is narrower than `timeout`: `drainTimeout` only limits the request-drain
+phase, while `timeout` limits the whole signal-driven shutdown path.
+
+In other words:
+
+- `drainTimeout` controls how long the plugin waits for tracked requests before moving on
+- `timeout` controls when the plugin stops waiting for the overall shutdown lifecycle and escalates to `app.stop(true)`
+
+Constraint:
+
+- `drainTimeout` must be less than or equal to `timeout`
+- if you omit `timeout`, the default `30_000` still applies to this rule
+
+The plugin validates this at startup and throws if `drainTimeout` is greater
+than the effective `timeout`, because otherwise the broader shutdown deadline
+would expire before the request-drain budget could ever be used fully.
 
 Value is in milliseconds.
 
@@ -183,6 +250,16 @@ Runs when the plugin catches an error during signal-driven shutdown.
 
 Use this to forward shutdown failures to your application's logger or
 observability pipeline instead of letting the plugin write directly to stderr.
+
+The `phase` field is one of:
+
+- `shutdown`: a lifecycle hook failed
+- `stop`: `app.stop()` failed
+- `timeout`: the overall shutdown deadline elapsed and the plugin escalated to `app.stop(true)`
+
+For `phase: 'timeout'`, this means the plugin hit the server shutdown deadline.
+It does not necessarily mean every already-running handler was synchronously
+aborted in user land.
 
 ```typescript
 new Elysia().use(

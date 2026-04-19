@@ -9,6 +9,25 @@ function getHook<T>(hook: T | undefined, name: string): T {
 }
 
 describe('gracefulShutdown', () => {
+  describe('options validation', () => {
+    test('throws when drainTimeout is greater than timeout', () => {
+      expect(() => {
+        gracefulShutdown({
+          drainTimeout: 31_000,
+          timeout: 30_000,
+        });
+      }).toThrow('gracefulShutdown: drainTimeout must be less than or equal to timeout');
+    });
+
+    test('throws when drainTimeout exceeds the default timeout', () => {
+      expect(() => {
+        gracefulShutdown({
+          drainTimeout: 31_000,
+        });
+      }).toThrow('gracefulShutdown: drainTimeout must be less than or equal to timeout');
+    });
+  });
+
   describe('runShutdown', () => {
     test('passes through the provided reason and signal', async () => {
       const plugin = gracefulShutdown();
@@ -151,7 +170,7 @@ describe('gracefulShutdown', () => {
     });
 
     test('attempts app.stop even when shutdown hooks throw', async () => {
-      const errors: Array<{ phase: 'shutdown' | 'stop'; error: unknown; signal?: string }> = [];
+      const errors: Array<{ phase: 'shutdown' | 'stop' | 'timeout'; error: unknown; signal?: string }> = [];
       const plugin = gracefulShutdown({
         signals: ['SIGTERM'],
         onShutdown: () => {
@@ -167,7 +186,7 @@ describe('gracefulShutdown', () => {
       let stopCalls = 0;
 
       const fakeApp = {
-        stop: async () => {
+        stop: async (_closeActiveConnections?: boolean) => {
           stopCalls += 1;
         },
       };
@@ -207,7 +226,7 @@ describe('gracefulShutdown', () => {
     });
 
     test('reports app.stop failures through onError', async () => {
-      const errors: Array<{ phase: 'shutdown' | 'stop'; error: unknown; signal?: string }> = [];
+      const errors: Array<{ phase: 'shutdown' | 'stop' | 'timeout'; error: unknown; signal?: string }> = [];
       const plugin = gracefulShutdown({
         signals: ['SIGTERM'],
         onError: ({ phase, error, signal }) => {
@@ -219,7 +238,7 @@ describe('gracefulShutdown', () => {
       const originalOff = process.off;
 
       const fakeApp = {
-        stop: async () => {
+        stop: async (_closeActiveConnections?: boolean) => {
           throw new Error('stop failed');
         },
       };
@@ -256,6 +275,175 @@ describe('gracefulShutdown', () => {
       }
     });
 
+    test('forces app.stop(true) when the overall shutdown timeout expires', async () => {
+      const errors: Array<{ phase: 'shutdown' | 'stop' | 'timeout'; error: unknown; signal?: string }> = [];
+      const stopCalls: boolean[] = [];
+      const plugin = gracefulShutdown({
+        signals: ['SIGTERM'],
+        timeout: 10,
+        onShutdown: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        },
+        onError: ({ phase, error, signal }) => {
+          errors.push({ phase, error, signal });
+        },
+      });
+      const registered = new Map<string, () => void>();
+      const originalOn = process.on;
+      const originalOff = process.off;
+
+      const fakeApp = {
+        stop: async (closeActiveConnections?: boolean) => {
+          stopCalls.push(closeActiveConnections === true);
+        },
+      };
+
+      process.on = ((signal: NodeJS.Signals, handler: () => void) => {
+        registered.set(signal, handler);
+        return process;
+      }) as typeof process.on;
+
+      process.off = ((signal: NodeJS.Signals) => {
+        registered.delete(signal);
+        return process;
+      }) as typeof process.off;
+
+      try {
+        const startHook = getHook(plugin.event.start?.[0], 'start');
+
+        await startHook.fn(fakeApp);
+
+        const handler = registered.get('SIGTERM');
+
+        expect(handler).toBeDefined();
+
+        handler?.();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(stopCalls).toEqual([true]);
+        expect(errors).toHaveLength(1);
+        expect(errors[0]?.phase).toBe('timeout');
+        expect(errors[0]?.signal).toBe('SIGTERM');
+        expect(errors[0]?.error).toBeInstanceOf(Error);
+      } finally {
+        process.on = originalOn;
+        process.off = originalOff;
+      }
+    });
+
+    test('runs finally after timeout escalation finishes', async () => {
+      const calls: string[] = [];
+      const plugin = gracefulShutdown({
+        signals: ['SIGTERM'],
+        timeout: 10,
+        finally: ({ state }) => {
+          calls.push(`finally:${state}`);
+        },
+        onError: ({ phase }) => {
+          calls.push(`error:${phase}`);
+        },
+      });
+      const registered = new Map<string, () => void>();
+      const originalOn = process.on;
+      const originalOff = process.off;
+
+      const fakeApp = {
+        stop: async (closeActiveConnections?: boolean) => {
+          calls.push(`stop:${closeActiveConnections === true ? 'force' : 'graceful'}:start`);
+
+          if (closeActiveConnections !== true) {
+            await new Promise((resolve) => setTimeout(resolve, 30));
+          }
+
+          calls.push(`stop:${closeActiveConnections === true ? 'force' : 'graceful'}:end`);
+        },
+      };
+
+      process.on = ((signal: NodeJS.Signals, handler: () => void) => {
+        registered.set(signal, handler);
+        return process;
+      }) as typeof process.on;
+
+      process.off = ((signal: NodeJS.Signals) => {
+        registered.delete(signal);
+        return process;
+      }) as typeof process.off;
+
+      try {
+        const startHook = getHook(plugin.event.start?.[0], 'start');
+
+        await startHook.fn(fakeApp);
+
+        const handler = registered.get('SIGTERM');
+
+        expect(handler).toBeDefined();
+
+        handler?.();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(calls).toEqual([
+          'stop:graceful:start',
+          'error:timeout',
+          'stop:force:start',
+          'stop:force:end',
+          'finally:completed',
+        ]);
+        expect(plugin.decorator.gracefulShutdown.store.state).toBe('completed');
+      } finally {
+        process.on = originalOn;
+        process.off = originalOff;
+      }
+    });
+
+    test('uses 30_000ms as the default overall shutdown timeout', async () => {
+      const plugin = gracefulShutdown({
+        signals: ['SIGTERM'],
+      });
+      const registered = new Map<string, () => void>();
+      const originalOn = process.on;
+      const originalOff = process.off;
+      const originalSetTimeout = globalThis.setTimeout;
+      const timeoutCalls: number[] = [];
+
+      const fakeApp = {
+        stop: async (_closeActiveConnections?: boolean) => undefined,
+      };
+
+      process.on = ((signal: NodeJS.Signals, handler: () => void) => {
+        registered.set(signal, handler);
+        return process;
+      }) as typeof process.on;
+
+      process.off = ((signal: NodeJS.Signals) => {
+        registered.delete(signal);
+        return process;
+      }) as typeof process.off;
+
+      globalThis.setTimeout = ((handler: TimerHandler, timeout?: number) => {
+        timeoutCalls.push(timeout ?? 0);
+        return originalSetTimeout(handler, timeout);
+      }) as typeof globalThis.setTimeout;
+
+      try {
+        const startHook = getHook(plugin.event.start?.[0], 'start');
+
+        await startHook.fn(fakeApp);
+
+        const handler = registered.get('SIGTERM');
+
+        expect(handler).toBeDefined();
+
+        handler?.();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(timeoutCalls).toContain(30_000);
+      } finally {
+        process.on = originalOn;
+        process.off = originalOff;
+        globalThis.setTimeout = originalSetTimeout;
+      }
+    });
+
     test('swallows errors thrown by onError to preserve fail-safe shutdown', async () => {
       const plugin = gracefulShutdown({
         signals: ['SIGTERM'],
@@ -272,7 +460,7 @@ describe('gracefulShutdown', () => {
       let stopCalls = 0;
 
       const fakeApp = {
-        stop: async () => {
+        stop: async (_closeActiveConnections?: boolean) => {
           stopCalls += 1;
         },
       };

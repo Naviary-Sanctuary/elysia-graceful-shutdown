@@ -7,6 +7,7 @@ const app = new Elysia()
   .use(
     gracefulShutdown({
       signals: ['SIGINT', 'SIGTERM'],
+      timeout: 6_000,
       drainTimeout: 3_000,
       preShutdown: ({ signal, activeRequestCount }) => {
         console.log('[graceful-shutdown] preShutdown', {
@@ -80,9 +81,11 @@ const app = new Elysia()
 app.listen(3000);
 
 console.log('request timeout example listening on http://localhost:3000');
+console.log('timeout is set to 6000ms');
 console.log('drainTimeout is set to 3000ms');
 console.log('1) In terminal A: curl http://localhost:3000/slow/10000');
 console.log('2) Before it finishes, press Ctrl+C in this terminal');
 console.log('3) Watch onShutdown start after about 3 seconds when draining times out');
-console.log('4) The slow request may still finish later if Bun keeps it alive long enough');
-console.log('5) In terminal B, you can inspect state with: curl http://localhost:3000/status');
+console.log('4) If shutdown still does not finish by about 6 seconds, the plugin calls app.stop(true)');
+console.log('5) Bun may still let the server-side /slow handler finish its own work even after the connection closes');
+console.log('6) In terminal B, you can inspect state with: curl http://localhost:3000/status');

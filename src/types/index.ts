@@ -61,7 +61,7 @@ export type GracefulShutdownErrorContext = {
   /**
    * Phase where the failure happened.
    */
-  phase: 'shutdown' | 'stop';
+  phase: 'shutdown' | 'stop' | 'timeout';
 
   /**
    * The original failure value.
@@ -94,6 +94,19 @@ export type GracefulShutdownOptions = {
    * @default 30000
    */
   drainTimeout?: number;
+
+  /**
+   * Maximum time to allow the full signal-driven shutdown flow to complete
+   * before the plugin force-stops active connections.
+   *
+   * This timeout covers `preShutdown`, request draining, `onShutdown`, and
+   * `app.stop()`.
+   *
+   * Value is in milliseconds.
+   *
+   * @default 30000
+   */
+  timeout?: number;
 
   /**
    * Called when the plugin catches an error during signal-driven shutdown.
